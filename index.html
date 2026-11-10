@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Genera actas de reunión a partir de la transcripción, con módulos editables.">
+<style>[hidden]{display:none!important}</style>
+<title>Generador de Actas</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+/* Layout: dos columnas en escritorio (configuración | transcripción y acta); una columna en celular. */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --ink:#14233b; --muted:#5b6b84; --line:#d9e0ea;
+  --accent:#17508f; --accent-ink:#ffffff; --soft:#e6eef8; --ok:#1d7a4d; --warn:#a15c00; --err:#b3261e;
+  --font-ui:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-doc:"Source Serif 4",Georgia,"Times New Roman",serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1724; --surface:#17212f; --ink:#e7edf6; --muted:#9aabc4; --line:#2a384c;
+  --accent:#6aa7ec; --accent-ink:#0b1626; --soft:#1d2c42; --ok:#5cc58e; --warn:#e0a24a; --err:#f2877f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1724; --surface:#17212f; --ink:#e7edf6; --muted:#9aabc4; --line:#2a384c;
+  --accent:#6aa7ec; --accent-ink:#0b1626; --soft:#1d2c42; --ok:#5cc58e; --warn:#e0a24a; --err:#f2877f; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:15px;line-height:1.5;
+  padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1180px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline;justify-content:space-between;margin-bottom:20px}
+h1{font-size:1.5rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+header p{margin:0;color:var(--muted);max-width:60ch}
+.grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:20px;min-width:0}
+section{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}
+h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px}
+label{display:block;font-size:.82rem;color:var(--muted);margin-bottom:4px;font-weight:500}
+input[type=text],input[type=date],input[type=time],textarea,select{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+textarea{resize:vertical;line-height:1.45}
+input:focus-visible,textarea:focus-visible,button:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.fields .full{grid-column:1/-1}
+@media (max-width:420px){.fields{grid-template-columns:minmax(0,1fr)}}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 12px;font-weight:500}
+button:hover{background:var(--soft)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600;padding:10px 18px}
+button.primary:hover{filter:brightness(1.08)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.ghost{border-color:transparent;background:transparent;color:var(--accent);padding:4px 8px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.mods{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.mod{border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.mod-head{display:flex;gap:6px;align-items:center;padding:6px 8px}
+.mod-head input[type=checkbox]{width:18px;height:18px;flex:none;accent-color:var(--accent)}
+.mod-head input[type=text]{border:0;background:transparent;padding:4px 6px;font-weight:600;min-width:0;flex:1}
+.mod-head button{padding:2px 8px;line-height:1.4}
+.mod.off .mod-head input[type=text]{color:var(--muted);text-decoration:line-through}
+.mod details{border-top:1px solid var(--line);padding:6px 10px 10px}
+.mod summary{cursor:pointer;font-size:.8rem;color:var(--muted)}
+.mod textarea{margin-top:8px;font-size:.88rem}
+.drop{border:1.5px dashed var(--line);border-radius:8px;padding:10px 12px;color:var(--muted);font-size:.85rem}
+.drop.over{border-color:var(--accent);background:var(--soft)}
+.meta{font-size:.8rem;color:var(--muted)}
+.status{font-size:.85rem;min-height:1.3em}
+.status.err{color:var(--err)} .status.ok{color:var(--ok)} .status.warn{color:var(--warn)}
+.tabs{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.tabs button{border:0;border-radius:0;padding:4px 12px;font-size:.8rem}
+.tabs button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
+.paper{background:#fff;color:#1b1b1b;border:1px solid var(--line);border-radius:6px;padding:28px 32px;font-family:var(--font-doc);font-size:1rem;line-height:1.6;min-height:200px;overflow-x:auto}
+:root[data-theme="dark"] .paper{box-shadow:0 0 0 1px #000}
+.paper h1,.paper h2,.paper h3{font-family:var(--font-doc);color:#0e2a4d;text-transform:none;letter-spacing:0;display:block}
+.paper h1{font-size:1.35rem;text-align:center;margin:0 0 .6em}
+.paper h2{font-size:1.1rem;margin:1.4em 0 .4em;border-bottom:1px solid #c9d3e2;padding-bottom:3px}
+.paper h3{font-size:1rem;margin:1em 0 .3em}
+.paper p{margin:.5em 0}.paper ul,.paper ol{margin:.4em 0;padding-left:1.4em}
+.paper table{border-collapse:collapse;width:100%;font-size:.92rem;margin:.6em 0}
+.paper th,.paper td{border:1px solid #9fb0c8;padding:5px 8px;text-align:left;vertical-align:top}
+.paper th{background:#e6eef8}
+.empty{color:var(--muted);font-family:var(--font-ui);font-size:.9rem}
+#acta-edit{font-family:var(--font-doc);min-height:360px}
+.tip{font-size:.82rem;color:var(--muted);margin:10px 0 0}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Generador de Actas</h1>
+    <p>Pega o dicta la transcripción de la reunión, elige los módulos del acta y obtén un borrador listo para revisar.</p>
+  </header>
+
+  <div class="grid">
+    <div class="col">
+      <section aria-labelledby="h-datos">
+        <h2 id="h-datos">1 · Datos de la reunión</h2>
+        <div class="fields">
+          <div class="full"><label for="f-nombre">Nombre de la reunión</label><input type="text" id="f-nombre" placeholder="Reunión de Departamento"></div>
+          <div><label for="f-fecha">Fecha</label><input type="date" id="f-fecha"></div>
+          <div><label for="f-hora">Hora de inicio</label><input type="time" id="f-hora"></div>
+          <div class="full"><label for="f-lugar">Lugar o modalidad</label><input type="text" id="f-lugar" placeholder="Sala de reuniones / Teams"></div>
+          <div><label for="f-pres">Preside</label><input type="text" id="f-pres" placeholder="Nombre"></div>
+          <div><label for="f-sec">Secretaría</label><input type="text" id="f-sec" placeholder="Nombre"></div>
+          <div class="full"><label for="f-asist">Asistentes (opcional, uno por línea o separados por coma)</label><textarea id="f-asist" rows="3" placeholder="Si lo dejas vacío, la IA los toma de la transcripción."></textarea></div>
+        </div>
+      </section>
+
+      <section aria-labelledby="h-mod">
+        <h2 id="h-mod"><span>2 · Módulos del acta</span><button class="ghost" id="b-reset" type="button">Restaurar</button></h2>
+        <ul class="mods" id="mods"></ul>
+        <div class="row" style="margin-top:10px"><button id="b-addmod" type="button">+ Agregar módulo</button></div>
+        <p class="tip">Cada módulo tiene instrucciones propias. Ajústalos al formato oficial del departamento; se guardan en este navegador.</p>
+      </section>
+    </div>
+
+    <div class="col">
+      <section aria-labelledby="h-trans">
+        <h2 id="h-trans"><span>3 · Transcripción</span><span class="meta" id="wc">0 palabras</span></h2>
+        <textarea id="trans" rows="12" placeholder="Pega aquí la transcripción de Teams, Meet, Klang o la grabadora. También puedes dictar o cargar un archivo."></textarea>
+        <div class="row" style="margin-top:10px">
+          <button id="b-mic" type="button" hidden>🎙 Dictar</button>
+          <label class="drop" id="drop" style="margin:0;cursor:pointer">Cargar archivo .txt o .vtt (transcripción de Teams)<input type="file" id="file" accept=".txt,.vtt,.srt,.md,text/plain,text/vtt" hidden></label>
+          <button id="b-example" type="button">Cargar ejemplo</button>
+          <button id="b-clear" type="button" class="ghost">Limpiar</button>
+        </div>
+        <p class="status" id="dstat" role="status"></p>
+      </section>
+
+      <section aria-labelledby="h-acta">
+        <h2 id="h-acta"><span>4 · Acta</span>
+          <span class="tabs" role="group" aria-label="Vista del acta">
+            <button type="button" id="t-view" aria-pressed="true">Vista previa</button>
+            <button type="button" id="t-edit" aria-pressed="false">Editar</button>
+          </span>
+        </h2>
+        <div class="row" style="margin-bottom:12px">
+          <button class="primary" id="b-gen" type="button">Generar acta</button>
+          <button id="b-stop" type="button" hidden>Detener</button>
+          <button id="b-prompt" type="button">Copiar instrucciones para otra IA</button>
+          <button id="b-copy" type="button" disabled>Copiar</button>
+          <button id="b-dl-md" type="button" disabled>Descargar .md</button>
+          <button id="b-dl-html" type="button" disabled>Descargar para Word</button>
+        </div>
+        <p class="status" id="gstat" role="status"></p>
+        <div class="paper" id="acta-view"><p class="empty">El acta aparecerá aquí. Es un borrador: revisa nombres, cifras y compromisos antes de firmarlo.</p></div>
+        <textarea id="acta-edit" hidden aria-label="Texto del acta en Markdown"></textarea>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); };
+
+  /* ---------- módulos por defecto ---------- */
+  var DEFAULT_MODS = [
+    {name:"ORDEN DEL DÍA", on:true, instr:"Lista numerada de los puntos de la reunión, en el orden en que se plantearon o aprobaron al inicio."},
+    {name:"TEMAS A TRATAR", on:true, instr:"Lista de los temas que se trataron, con una breve descripción de cada uno y quién lo presentó si se dice."},
+    {name:"DESARROLLO DE LA REUNIÓN", on:true, instr:"Un subtítulo por cada tema, con un resumen en prosa de lo discutido: quién planteó qué, argumentos principales, cifras o fechas mencionadas, y las decisiones o votaciones con su resultado."},
+    {name:"PROPOSICIONES Y VARIOS", on:true, instr:"Proposiciones presentadas y temas adicionales planteados, con quien los propuso y lo que se resolvió."},
+    {name:"RELACIÓN PERSONAS ASISTENTES", on:true, instr:"Tabla en Markdown con columnas: N.º, Nombre, Cargo o dependencia (si se dice), Asistencia (Asistió, Excusa o No asistió). Incluye solo a quienes se nombran o hablan en la transcripción."},
+    {name:"COMPROMISOS", on:true, instr:"Tabla en Markdown con columnas: N.º, Compromiso, Responsable, Fecha límite. Incluye solo compromisos dichos de forma explícita. Si falta responsable o fecha, escribe 'Por definir'."},
+    {name:"OBSERVACIONES", on:true, instr:"Constancias que se dejaron, hora de inicio y de cierre si constan, y fecha, hora y lugar de la próxima reunión si se acordó. Si no hay nada, escribe 'No se registran observaciones'."}
+  ];
+  var KEY = "actas-modulos-v2";
+  var mods = load();
+  function load(){
+    try{ var s = localStorage.getItem(KEY); if(s){ var a = JSON.parse(s); if(Array.isArray(a) && a.length) return a; } }catch(e){}
+    return JSON.parse(JSON.stringify(DEFAULT_MODS));
+  }
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify(mods)); }catch(e){} }
+
+  function renderMods(){
+    var ul = $("mods"); ul.innerHTML = "";
+    mods.forEach(function(m, i){
+      var li = document.createElement("li");
+      li.className = "mod" + (m.on ? "" : " off");
+      li.innerHTML =
+        '<div class="mod-head">' +
+        '<input type="checkbox" aria-label="Incluir módulo" ' + (m.on ? "checked" : "") + '>' +
+        '<input type="text" aria-label="Nombre del módulo">' +
+        '<button type="button" data-a="up" aria-label="Subir" ' + (i===0?"disabled":"") + '>↑</button>' +
+        '<button type="button" data-a="down" aria-label="Bajar" ' + (i===mods.length-1?"disabled":"") + '>↓</button>' +
+        '<button type="button" data-a="del" aria-label="Eliminar módulo">✕</button></div>' +
+        '<details><summary>Instrucciones del módulo</summary><textarea rows="3" aria-label="Instrucciones del módulo"></textarea></details>';
+      var name = li.querySelector('input[type=text]'); name.value = m.name;
+      var ta = li.querySelector("textarea"); ta.value = m.instr;
+      li.querySelector('input[type=checkbox]').addEventListener("change", function(e){ m.on = e.target.checked; li.classList.toggle("off", !m.on); save(); });
+      name.addEventListener("input", function(){ m.name = name.value; save(); });
+      ta.addEventListener("input", function(){ m.instr = ta.value; save(); });
+      li.querySelectorAll("button").forEach(function(b){
+        b.addEventListener("click", function(){
+          var a = b.getAttribute("data-a");
+          if(a==="up" && i>0){ mods.splice(i-1,0,mods.splice(i,1)[0]); }
+          else if(a==="down" && i<mods.length-1){ mods.splice(i+1,0,mods.splice(i,1)[0]); }
+          else if(a==="del"){ mods.splice(i,1); }
+          save(); renderMods();
+        });
+      });
+      ul.appendChild(li);
+    });
+  }
+  $("b-addmod").addEventListener("click", function(){ mods.push({name:"Nuevo módulo", on:true, instr:"Describe qué debe contener este módulo."}); save(); renderMods(); });
+  $("b-reset").addEventListener("click", function(){ mods = JSON.parse(JSON.stringify(DEFAULT_MODS)); save(); renderMods(); });
+  renderMods();
+
+  /* ---------- datos ---------- */
+  var today = new Date(); today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+  $("f-fecha").value = today.toISOString().slice(0,10);
+
+  /* ---------- transcripción ---------- */
+  var trans = $("trans");
+  var LONG = 7000, CHUNK = 5000;
+  function wc(){ var t = trans.value.trim(), n = t ? t.split(/\s+/).length : 0; $("wc").textContent = n.toLocaleString("es-CO") + " palabras" + (n > LONG ? " · se procesará por partes" : ""); }
+  trans.addEventListener("input", wc);
+  $("b-clear").addEventListener("click", function(){ trans.value = ""; wc(); setStat("dstat","",""); });
+
+  var EXAMPLE = "Ejemplo ficticio.\n\nMaría Gómez: Buenas tardes a todos. Siendo las 2:05 de la tarde damos inicio a la reunión del departamento. Hay quórum con siete de ocho integrantes. El profesor Andrés Ruiz se excusó por una comisión.\nMaría Gómez: El orden del día es: primero, avance del calendario de prácticas; segundo, informe de matrículas; tercero, varios.\nLuis Pardo: Sobre las prácticas, ya tenemos quince estudiantes ubicados y faltan seis. Me comprometo a enviar el listado de empresas pendientes el próximo miércoles.\nCarolina Muñoz: Yo puedo contactar a las cuatro empresas del sector salud. Les escribo esta semana.\nMaría Gómez: Perfecto. Se aprueba mantener el cierre de ubicaciones el 30 de noviembre, ¿estamos de acuerdo? Todos de acuerdo.\nSandra Valencia: En matrículas, estamos en 112 inscritos frente a 98 del semestre pasado. Propongo reforzar la difusión en redes durante diciembre.\nMaría Gómez: Queda a cargo de Sandra preparar el plan de difusión para la próxima reunión.\nLuis Pardo: En varios, solicito que revisemos el reglamento de trabajos de grado.\nMaría Gómez: Lo incluimos en la próxima reunión, el viernes 20 de noviembre a las 2 de la tarde. Se levanta la sesión a las 3:10.";
+  $("b-example").addEventListener("click", function(){
+    trans.value = EXAMPLE; wc();
+    $("f-nombre").value = "Reunión de Departamento (ejemplo)"; $("f-lugar").value = "Sala de reuniones";
+    $("f-pres").value = "María Gómez"; $("f-hora").value = "14:05";
+    setStat("dstat","Se cargó una transcripción de ejemplo ficticia. Presiona «Generar acta».","");
+  });
+
+  function cleanTranscript(txt, name){
+    if(!/\.(vtt|srt)$/i.test(name) && !/^WEBVTT/.test(txt)) return txt;
+    var out = [], last = "";
+    txt.split(/\r?\n/).forEach(function(l){
+      l = l.trim();
+      if(!l || /^WEBVTT/.test(l) || /^\d+$/.test(l) || /-->/.test(l) || /^NOTE/.test(l) || /^[0-9a-f-]{20,}(\/\d+-\d+)?$/i.test(l)) return;
+      l = l.replace(/<v\s+([^>]+)>/g, "$1: ").replace(/<\/?[^>]+>/g, "").trim();
+      if(l && l !== last){ out.push(l); last = l; }
+    });
+    return out.join("\n");
+  }
+  function readFile(f){
+    if(!f) return;
+    if(/\.(docx|pdf|doc)$/i.test(f.name)){ setStat("dstat","Los .docx y .pdf no se leen aquí. Copia el texto y pégalo, o guarda la transcripción como .txt o .vtt.","err"); return; }
+    var r = new FileReader();
+    r.onload = function(){ trans.value = cleanTranscript(String(r.result), f.name); wc(); setStat("dstat","Archivo cargado: " + f.name, "ok"); };
+    r.onerror = function(){ setStat("dstat","No se pudo leer el archivo.","err"); };
+    r.readAsText(f);
+  }
+  $("file").addEventListener("change", function(e){ readFile(e.target.files[0]); e.target.value = ""; });
+  var drop = $("drop");
+  ["dragenter","dragover"].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add("over"); }); });
+  ["dragleave","drop"].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove("over"); }); });
+  drop.addEventListener("drop", function(e){ readFile(e.dataTransfer.files[0]); });
+
+  function setStat(id, msg, cls){ var el = $(id); el.textContent = msg; el.className = "status" + (cls ? " " + cls : ""); }
+
+  /* ---------- dictado ---------- */
+  var dict = null, listening = false;
+  if(window.claude && window.claude.use){
+    window.claude.use("dictation").then(function(d){
+      if(!d) return;
+      dict = d; $("b-mic").hidden = false;
+      d.onFinal(function(o){ var t = trans.value; trans.value = t + (t && !/\s$/.test(t) ? " " : "") + o.text; wc(); });
+      d.onState(function(s){
+        listening = (s.state === "listening" || s.state === "starting");
+        $("b-mic").textContent = listening ? "⏹ Detener dictado" : "🎙 Dictar";
+        if(s.state === "idle" && s.reason === "not_granted") setStat("dstat","El permiso de micrófono fue rechazado. Puedes escribir o pegar el texto.","warn");
+      });
+    }).catch(function(){});
+  }
+  $("b-mic").addEventListener("click", function(){
+    if(!dict) return;
+    if(listening){ dict.stop().catch(function(){}); return; }
+    dict.start({language:"es-CO"}).catch(function(e){ if(e && e.code !== "dismissed") setStat("dstat","No se pudo iniciar el dictado.","warn"); });
+  });
+
+  /* ---------- generación ---------- */
+  var sampleFn = null, ctrl = null;
+  if(window.claude && window.claude.use){
+    window.claude.use("sample").then(function(s){ sampleFn = s; if(!s) setStat("gstat","La generación con IA no está disponible en esta vista. Abre el artefacto en Claude para usarla.","warn"); }).catch(function(){});
+  }
+  function fmtDate(v){
+    if(!v) return "";
+    var p = v.split("-"); var d = new Date(+p[0], +p[1]-1, +p[2]);
+    return d.toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  }
+  function buildPrompt(src, notes){
+    var act = mods.filter(function(m){ return m.on; });
+    var meta = [
+      ["Nombre de la reunión", $("f-nombre").value], ["Fecha", fmtDate($("f-fecha").value)], ["Hora de inicio", $("f-hora").value],
+      ["Lugar o modalidad", $("f-lugar").value], ["Preside", $("f-pres").value], ["Secretaría", $("f-sec").value], ["Asistentes indicados", $("f-asist").value]
+    ].filter(function(x){ return x[1].trim(); }).map(function(x){ return "- " + x[0] + ": " + x[1].trim(); }).join("\n");
+    var modTxt = act.map(function(m, i){ return (i+1) + ". " + m.name + "\n   Instrucciones: " + m.instr; }).join("\n");
+    return "Eres secretario(a) de actas de un departamento de una universidad pública colombiana. Redacta el acta formal de la reunión a partir de la transcripción.\n\n" +
+      "REGLAS\n- Escribe en español formal, en tercera persona y tiempo pasado.\n- No inventes nada: nombres, cifras, fechas, cargos o decisiones que no estén en la transcripción. Si un dato de un módulo no consta, escribe «No se registra».\n- Si la transcripción no identifica a quien habla, no atribuyas la intervención a nadie.\n- Corrige muletillas y errores de transcripción sin cambiar el sentido.\n- Entrega solo el acta en Markdown: un título de nivel 1 (# ) con el nombre de la reunión, una línea justo debajo con fecha, hora y lugar si se suministraron, y un encabezado de nivel 2 (## ) por cada módulo, exactamente con los nombres y en el orden de la lista. No agregues módulos, comentarios ni texto fuera del acta.\n\n" +
+      "DATOS SUMINISTRADOS POR EL USUARIO\n" + (meta || "(ninguno)") + "\n\nMÓDULOS DEL ACTA\n" + modTxt + "\n\n" + (notes ? "NOTAS DE LA REUNIÓN (resumen detallado por partes de una transcripción larga, en orden cronológico; son tu única fuente)" : "TRANSCRIPCIÓN") + "\n\"\"\"\n" + src + "\n\"\"\"";
+  }
+  var md = "";
+  function setActa(text){
+    md = text;
+    $("acta-edit").value = text;
+    $("acta-view").innerHTML = text.trim() ? mdToHtml(text) : '<p class="empty">El acta aparecerá aquí.</p>';
+    var has = !!text.trim();
+    ["b-copy","b-dl-md","b-dl-html"].forEach(function(id){ $(id).disabled = !has; });
+  }
+  function pieces(t){
+    var out = [];
+    t.split(/\n+/).forEach(function(p){
+      var ws = p.split(/\s+/);
+      if(ws.length <= CHUNK){ out.push(p); return; }
+      for(var k = 0; k < ws.length; k += CHUNK) out.push(ws.slice(k, k + CHUNK).join(" "));
+    });
+    return out;
+  }
+  function chunks(t){
+    var out = [], cur = [], n = 0;
+    pieces(t).forEach(function(p){
+      var w = p.split(/\s+/).length;
+      if(n + w > CHUNK && cur.length){ out.push(cur.join("\n")); cur = []; n = 0; }
+      cur.push(p); n += w;
+    });
+    if(cur.length) out.push(cur.join("\n"));
+    return out;
+  }
+  function prepare(){
+    var t = trans.value.trim(), words = t.split(/\s+/).length;
+    if(words <= LONG) return Promise.resolve({src:t, notes:false});
+    var parts = chunks(t), notes = [], i = 0;
+    function next(){
+      if(i >= parts.length) return Promise.resolve({src: notes.join("\n\n"), notes:true});
+      setStat("gstat","Reunión larga: procesando parte " + (i+1) + " de " + parts.length + "…","");
+      var prompt = "Esta es la parte " + (i+1) + " de " + parts.length + " de la transcripción de una reunión larga. Extrae notas detalladas en español, en orden cronológico, sin inventar nada: 1) personas que hablan o se mencionan (con cargo si se dice); 2) hora o referencias de tiempo; 3) cada tema tratado, con quién dijo qué, argumentos, cifras, fechas y nombres tal como aparecen; 4) decisiones y cómo se tomaron; 5) compromisos con responsable y fecha tal como se dijeron; 6) temas pendientes. Marca como [dato dudoso] lo que la transcripción deje poco claro. Entrega solo las notas.\n\nTRANSCRIPCIÓN (PARTE)\n\"\"\"\n" + parts[i] + "\n\"\"\"";
+      return sampleFn(prompt, {signal: ctrl.signal, cache:false, modelTier:"default"}).then(function(r){
+        notes.push("### Parte " + (i+1) + " de " + parts.length + "\n" + r.text); i++; return next();
+      });
+    }
+    return next();
+  }
+  $("b-gen").addEventListener("click", function(){
+    if(!sampleFn){ setStat("gstat","Esta copia no tiene la IA conectada. Presiona «Copiar instrucciones para otra IA», pégalas en Claude, ChatGPT o Gemini y pega la respuesta en la pestaña Editar.","warn"); return; }
+    if(trans.value.trim().length < 40){ setStat("gstat","Agrega la transcripción de la reunión antes de generar el acta.","err"); return; }
+    if(!mods.some(function(m){ return m.on; })){ setStat("gstat","Activa al menos un módulo.","err"); return; }
+    ctrl = new AbortController();
+    $("b-gen").disabled = true; $("b-stop").hidden = false; setStat("gstat","Redactando el acta…","");
+    prepare()
+      .then(function(p){ setStat("gstat", p.notes ? "Notas listas. Redactando el acta final…" : "Redactando el acta…",""); return sampleFn(buildPrompt(p.src, p.notes), {signal: ctrl.signal, cache:false, modelTier:"default", onText:function(u){ if(u.text && u.text !== "Thinking...") setActa(u.text); }}); })
+      .then(function(r){ setActa(r.text); setStat("gstat", r.truncated ? "El acta se cortó por longitud. Divide la transcripción en partes." : "Borrador listo. Revisa nombres, fechas y compromisos antes de firmar.", r.truncated ? "warn" : "ok"); })
+      .catch(function(e){
+        var c = e && e.code;
+        if(e && e.name === "AbortError" || c === "aborted") setStat("gstat","Generación detenida.","warn");
+        else if(c === "not_granted") setStat("gstat","Necesitas permitir el uso de Claude para generar el acta.","err");
+        else if(c === "rate_limited") setStat("gstat","Demasiadas solicitudes seguidas. Espera un momento y vuelve a intentar.","warn");
+        else setStat("gstat","No se pudo generar el acta" + (e && e.message ? ": " + e.message : "."),"err");
+      })
+      .finally(function(){ $("b-gen").disabled = false; $("b-stop").hidden = true; ctrl = null; });
+  });
+  $("b-stop").addEventListener("click", function(){ if(ctrl) ctrl.abort(); });
+  $("b-prompt").addEventListener("click", function(){
+    if(trans.value.trim().length < 40){ setStat("gstat","Agrega la transcripción de la reunión primero.","err"); return; }
+    if(!mods.some(function(m){ return m.on; })){ setStat("gstat","Activa al menos un módulo.","err"); return; }
+    var p = buildPrompt(trans.value.trim(), false) + "\n\nIMPORTANTE: entrega el acta completa dentro de un único bloque de código Markdown, para que pueda copiarla sin perder los títulos ni las tablas.";
+    var ok = function(){ setStat("gstat","Instrucciones copiadas. Pégalas en Claude, ChatGPT o Gemini y luego pega la respuesta en la pestaña «Editar» de aquí.","ok"); };
+    var manual = function(){ showTab(true); $("acta-edit").value = p; $("acta-edit").select(); setStat("gstat","No pude copiar automáticamente. Dejé las instrucciones en el recuadro de Editar, ya seleccionadas: cópialas (Ctrl+C), pégalas en tu IA y luego reemplaza el recuadro con la respuesta.","warn"); };
+    try{ navigator.clipboard.writeText(p).then(ok, manual); }catch(e){ manual(); }
+  });
+  if(!(window.claude && window.claude.use)){ $("b-gen").hidden = true; $("b-prompt").classList.add("primary"); $("b-prompt").textContent = "Copiar instrucciones para mi IA"; setStat("gstat","Cómo usarla: 1) carga la transcripción; 2) copia las instrucciones y pégalas en Claude, ChatGPT o Gemini; 3) pega la respuesta en la pestaña Editar para ver el acta y descargarla.","warn"); }
+
+  /* ---------- vista y edición ---------- */
+  function showTab(edit){
+    $("acta-view").hidden = edit; $("acta-edit").hidden = !edit;
+    $("t-view").setAttribute("aria-pressed", String(!edit)); $("t-edit").setAttribute("aria-pressed", String(edit));
+  }
+  $("t-view").addEventListener("click", function(){ showTab(false); });
+  $("t-edit").addEventListener("click", function(){ showTab(true); });
+  $("acta-edit").addEventListener("input", function(){ setActa($("acta-edit").value); });
+
+  function inline(s){
+    s = esc(s);
+    return s.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>").replace(/(^|[^*])\*([^*\n]+)\*/g,"$1<em>$2</em>");
+  }
+  function mdToHtml(src){
+    var lines = src.replace(/\r/g,"").split("\n").filter(function(x){ return !/^\s*```/.test(x); }), out = [], i = 0;
+    while(i < lines.length){
+      var l = lines[i], m;
+      if(!l.trim()){ i++; continue; }
+      if(/^[A-ZÁÉÍÓÚÑ0-9 .,:()\/ª-]{6,70}$/.test(l.trim()) && /[A-ZÁÉÍÓÚÑ]{3}/.test(l)){ out.push("<h2>" + inline(l.trim()) + "</h2>"); i++; continue; }
+      if((m = l.match(/^(#{1,3})\s+(.*)$/))){ out.push("<h"+m[1].length+">"+inline(m[2])+"</h"+m[1].length+">"); i++; continue; }
+      if(/^\s*\|/.test(l)){
+        var rows = [];
+        while(i < lines.length && /^\s*\|/.test(lines[i])){ rows.push(lines[i]); i++; }
+        var cells = function(r){ return r.trim().replace(/^\||\|$/g,"").split("|").map(function(c){ return c.trim(); }); };
+        var head = cells(rows[0]), body = rows.slice(/^\s*\|[\s:|-]+\|\s*$/.test(rows[1]||"") ? 2 : 1);
+        out.push("<table><thead><tr>" + head.map(function(c){ return "<th>"+inline(c)+"</th>"; }).join("") + "</tr></thead><tbody>" +
+          body.map(function(r){ return "<tr>" + cells(r).map(function(c){ return "<td>"+inline(c)+"</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table>");
+        continue;
+      }
+      if(/^\s*[-*]\s+/.test(l)){
+        var it = []; while(i < lines.length && /^\s*[-*]\s+/.test(lines[i])){ it.push("<li>"+inline(lines[i].replace(/^\s*[-*]\s+/,""))+"</li>"); i++; }
+        out.push("<ul>"+it.join("")+"</ul>"); continue;
+      }
+      if(/^\s*\d+[.)]\s+/.test(l)){
+        var it2 = []; while(i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])){ it2.push("<li>"+inline(lines[i].replace(/^\s*\d+[.)]\s+/,""))+"</li>"); i++; }
+        out.push("<ol>"+it2.join("")+"</ol>"); continue;
+      }
+      var p = []; while(i < lines.length && lines[i].trim() && !/^(#{1,3}\s|\s*\||\s*[-*]\s+|\s*\d+[.)]\s+)/.test(lines[i])){ p.push(lines[i]); i++; }
+      out.push("<p>"+inline(p.join(" "))+"</p>");
+    }
+    return out.join("\n");
+  }
+
+  /* ---------- exportar ---------- */
+  function slug(){ var n = ($("f-nombre").value || "acta").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); return "acta-" + (n.replace(/^acta-?/,"") || "reunion") + "-" + ($("f-fecha").value || ""); }
+  function localSave(name, data){
+    try{
+      var u = URL.createObjectURL(new Blob([data], {type:"text/plain;charset=utf-8"}));
+      var a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(u); }, 4000);
+      setStat("gstat","Archivo descargado: " + name,"ok");
+    }catch(e){ setStat("gstat","No se pudo guardar el archivo. Usa Copiar.","err"); }
+  }
+  function saveFile(name, data){
+    if(!(window.claude && window.claude.use)){ localSave(name, data); return; }
+    window.claude.use("downloads").then(function(d){
+      if(!d){ setStat("gstat","La descarga no está disponible en esta vista. Usa Copiar.","warn"); return; }
+      return d.save({filename:name, data:data}).then(function(){ setStat("gstat","Archivo listo: " + name,"ok"); });
+    }).catch(function(e){ if(!e || e.code !== "declined") setStat("gstat","No se pudo guardar el archivo.","err"); });
+  }
+  $("b-dl-md").addEventListener("click", function(){ saveFile(slug()+".md", md); });
+  $("b-dl-html").addEventListener("click", function(){
+    var html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Acta</title><style>body{font-family:"Times New Roman",serif;font-size:12pt;line-height:1.5}h1{text-align:center;font-size:16pt}h2{font-size:13pt;border-bottom:1px solid #999}table{border-collapse:collapse;width:100%}th,td{border:1px solid #666;padding:4px 6px;text-align:left;vertical-align:top}th{background:#e6eef8}</style></head><body>' + mdToHtml(md) + '</body></html>';
+    saveFile(slug()+".html", html);
+  });
+  $("b-copy").addEventListener("click", function(){
+    var done = function(){ setStat("gstat","Acta copiada al portapapeles.","ok"); };
+    var fallback = function(){ showTab(true); $("acta-edit").select(); setStat("gstat","Seleccioné el texto: presiona Ctrl+C (o copiar) para copiarlo.","warn"); };
+    try{ navigator.clipboard.writeText(md).then(done, fallback); }catch(e){ fallback(); }
+  });
+
+  wc();
+})();
+</script>
+
+</body>
+</html>
